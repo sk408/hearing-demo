@@ -11,7 +11,12 @@
     <!-- Header -->
     <header class="header">
       <h1 class="header-title">Hearing Loss Demo</h1>
-      <button id="btn-mic" class="btn btn-mic-hero">&#x1F3A4; Use Microphone</button>
+      <div class="mic-controls">
+        <button id="btn-mic" class="btn btn-mic-hero">&#x1F3A4; Use Microphone</button>
+        <select id="mic-select" class="mic-select" disabled>
+          <option value="">Select microphone...</option>
+        </select>
+      </div>
       <span class="header-hint">Space: Play/Stop &middot; F: Toggle Mode</span>
     </header>
 

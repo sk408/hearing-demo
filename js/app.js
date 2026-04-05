@@ -16,6 +16,7 @@
   let freqInputs = {};
   let bandChecks = {};
   let attDisplays = {};
+  let micPermissionGranted = false;
 
   // --- Initialization ---
 
@@ -27,6 +28,9 @@
 
     // Initialize audio eagerly so demo sample is ready
     await initAudio();
+
+    // Populate mic list (labels may be empty until permission granted)
+    refreshMicList();
 
     setupEventListeners();
     startAnimationLoop();
@@ -51,7 +55,8 @@
       fileName: document.getElementById('file-name'),
       presetDesc: document.getElementById('preset-description'),
       safetyThreshold: document.getElementById('safety-threshold'),
-      thresholdValue: document.getElementById('threshold-value')
+      thresholdValue: document.getElementById('threshold-value'),
+      micSelect: document.getElementById('mic-select')
     };
 
     [125, 250, 500, 1000, 2000, 4000, 8000].forEach(f => {
@@ -112,6 +117,10 @@
 
     // Microphone
     els.btnMic.addEventListener('click', handleMicToggle);
+    els.micSelect.addEventListener('change', handleMicDeviceChange);
+
+    // Listen for device changes (e.g. bluetooth headset connect/disconnect)
+    navigator.mediaDevices.addEventListener('devicechange', refreshMicList);
 
     // Playback
     els.btnPlay.addEventListener('click', handlePlay);
@@ -290,6 +299,59 @@
     els.btnStop.disabled = true;
   }
 
+  // --- Mic Device Selection ---
+
+  async function refreshMicList() {
+    if (!audioEngine) return;
+    const mics = await audioEngine.enumerateMics();
+    const select = els.micSelect;
+    const currentValue = select.value;
+
+    // Clear existing options
+    select.innerHTML = '';
+
+    if (mics.length === 0) {
+      select.innerHTML = '<option value="">No microphones found</option>';
+      select.disabled = true;
+      return;
+    }
+
+    mics.forEach((mic, i) => {
+      const opt = document.createElement('option');
+      opt.value = mic.deviceId;
+      // Labels are empty until permission is granted; show fallback
+      opt.textContent = mic.label || ('Microphone ' + (i + 1));
+      select.appendChild(opt);
+    });
+
+    // Restore selection if still available, otherwise pick first
+    if (currentValue && mics.some(m => m.deviceId === currentValue)) {
+      select.value = currentValue;
+    } else {
+      select.selectedIndex = 0;
+    }
+
+    select.disabled = false;
+  }
+
+  async function handleMicDeviceChange() {
+    // Only switch if mic is currently active
+    if (!audioEngine || !audioEngine.isMicActive) return;
+
+    const deviceId = els.micSelect.value;
+    if (!deviceId) return;
+
+    try {
+      // Stop current mic stream
+      audioEngine.stopMic();
+      // Start with newly selected device
+      await audioEngine.startMic(filterBank.input, deviceId);
+    } catch (err) {
+      console.error('Failed to switch microphone:', err);
+      if (els.fileName) els.fileName.textContent = 'Mic switch failed';
+    }
+  }
+
   async function handleMicToggle() {
     await initAudio();
 
@@ -308,7 +370,18 @@
       // Stop file playback if active
       handleStop();
 
-      await audioEngine.startMic(filterBank.input);
+      const selectedDeviceId = els.micSelect.value || undefined;
+      await audioEngine.startMic(filterBank.input, selectedDeviceId);
+
+      // After permission granted, refresh the list to get real labels
+      if (!micPermissionGranted) {
+        micPermissionGranted = true;
+        await refreshMicList();
+        // Set dropdown to the active device
+        if (audioEngine.currentMicDeviceId) {
+          els.micSelect.value = audioEngine.currentMicDeviceId;
+        }
+      }
 
       els.btnMic.textContent = '\u{1F534} Stop Mic';
       els.btnMic.classList.add('active');

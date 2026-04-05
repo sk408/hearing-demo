@@ -177,6 +177,54 @@ body {
   50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
 }
 
+/* ---- Mic Controls ---- */
+
+.mic-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mic-select {
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.08);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-family: inherit;
+  max-width: 200px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+
+.mic-select:hover:not(:disabled) {
+  border-color: rgba(255,255,255,0.3);
+  background-color: rgba(255,255,255,0.12);
+}
+
+.mic-select:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.mic-select:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.mic-select option {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
 .file-name {
   font-size: 13px;
   color: var(--text-muted);
@@ -643,6 +691,8 @@ body {
   .header { padding: 8px 14px; }
   .header-hint { display: none; }
   .btn-mic-hero { padding: 8px 16px; font-size: 14px; }
+  .mic-controls { flex-wrap: wrap; }
+  .mic-select { max-width: 160px; font-size: 11px; }
   .setup-panel { padding: 10px 14px; gap: 8px; }
   .setup-row { gap: 8px; }
 

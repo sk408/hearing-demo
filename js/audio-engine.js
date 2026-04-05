@@ -127,25 +127,40 @@ class AudioEngine {
     this.isPlaying = false;
   }
 
+  // Enumerate audio input devices
+  async enumerateMics() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter(d => d.kind === 'audioinput');
+  }
+
   // Start microphone input, connecting to the provided destination node
-  async startMic(destination) {
+  // Optional deviceId to select a specific mic
+  async startMic(destination, deviceId) {
     if (!this.ctx) await this.init();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
 
     // Stop any file playback first
     this.stop();
 
-    this.micStream = await navigator.mediaDevices.getUserMedia({
+    const constraints = {
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true
       }
-    });
+    };
+    if (deviceId) {
+      constraints.audio.deviceId = { exact: deviceId };
+    }
 
+    this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
     this.micSource = this.ctx.createMediaStreamSource(this.micStream);
     this.micSource.connect(destination);
     this.isMicActive = true;
+
+    // Capture the actual device ID from the active track
+    const track = this.micStream.getAudioTracks()[0];
+    this.currentMicDeviceId = track ? track.getSettings().deviceId : (deviceId || null);
   }
 
   stopMic() {
