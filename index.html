@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hearing Demo</title>
+  <link rel="stylesheet" href="css/demo.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="toolbar">
+      <h1>Hearing Demo</h1>
+      <div class="controls">
+        <input type="file" id="audio-input" accept="audio/*" hidden>
+        <button id="btn-load">Load Audio</button>
+        
+        <select id="audiogram-select">
+          <option value="">Select Audiogram...</option>
+          <option value="mild">Mild Loss</option>
+          <option value="moderate">Moderate Loss</option>
+          <option value="severe">Severe Loss</option>
+          <option value="custom">Custom Entry</option>
+        </select>
+        
+        <button id="btn-play" disabled>Play</button>
+        <button id="btn-stop" disabled>Stop</button>
+        
+        <div class="mode-toggle">
+          <span>Mode:</span>
+          <button id="btn-full" class="active">Full</button>
+          <button id="btn-filtered">Your Hearing</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Audiogram Panel (hidden by default, shown for custom entry) -->
+    <div id="audiogram-panel" class="panel hidden">
+      <h3>Audiogram Thresholds (dB HL)</h3>
+      <div class="threshold-grid">
+        <div class="freq-control">
+          <label>125 Hz</label>
+          <input type="number" id="thr-125" value="25" min="0" max="120">
+        </div>
+        <div class="freq-control">
+          <label>250 Hz</label>
+          <input type="number" id="thr-250" value="30" min="0" max="120">
+        </div>
+        <div class="freq-control">
+          <label>500 Hz</label>
+          <input type="number" id="thr-500" value="40" min="0" max="120">
+        </div>
+        <div class="freq-control">
+          <label>1 kHz</label>
+          <input type="number" id="thr-1000" value="50" min="0" max="120">
+        </div>
+        <div class="freq-control">
+          <label>2 kHz</label>
+          <input type="number" id="thr-2000" value="60" min="0" max="120">
+        </div>
+        <div class="freq-control">
+          <label>4 kHz</label>
+          <input type="number" id="thr-4000" value="70" min="0" max="120">
+        </div>
+        <div class="freq-control">
+          <label>8 kHz</label>
+          <input type="number" id="thr-8000" value="75" min="0" max="120">
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Display -->
+    <main class="display">
+      <canvas id="spectrogram"></canvas>
+      <canvas id="overlay"></canvas>
+      
+      <!-- Level Meter -->
+      <div class="level-meter">
+        <span>Output Level:</span>
+        <div class="meter-bar">
+          <div id="level-fill" class="fill"></div>
+        </div>
+        <span id="level-value">-- dB</span>
+        <span id="level-warning" class="warning hidden">⚠️</span>
+      </div>
+    </main>
+
+    <!-- Per-Band Controls -->
+    <footer class="band-controls">
+      <h4>Frequency Bands</h4>
+      <div class="bands">
+        <div class="band" data-freq="125">
+          <label>125 Hz</label>
+          <input type="checkbox" checked id="band-125">
+          <span class="attenuation" id="att-125">0 dB</span>
+        </div>
+        <div class="band" data-freq="250">
+          <label>250 Hz</label>
+          <input type="checkbox" checked id="band-250">
+          <span class="attenuation" id="att-250">0 dB</span>
+        </div>
+        <div class="band" data-freq="500">
+          <label>500 Hz</label>
+          <input type="checkbox" checked id="band-500">
+          <span class="attenuation" id="att-500">0 dB</span>
+        </div>
+        <div class="band" data-freq="1000">
+          <label>1 kHz</label>
+          <input type="checkbox" checked id="band-1000">
+          <span class="attenuation" id="att-1000">0 dB</span>
+        </div>
+        <div class="band" data-freq="2000">
+          <label>2 kHz</label>
+          <input type="checkbox" checked id="band-2000">
+          <span class="attenuation" id="att-2000">0 dB</span>
+        </div>
+        <div class="band" data-freq="4000">
+          <label>4 kHz</label>
+          <input type="checkbox" checked id="band-4000">
+          <span class="attenuation" id="att-4000">0 dB</span>
+        </div>
+        <div class="band" data-freq="8000">
+          <label>8 kHz</label>
+          <input type="checkbox" checked id="band-8000">
+          <span class="attenuation" id="att-8000">0 dB</span>
+        </div>
+      </div>
+      
+      <div class="volume-control">
+        <label>Master Volume</label>
+        <input type="range" id="master-volume" min="0" max="100" value="50">
+        <span id="volume-value">50%</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/presets.js"></script>
+  <script src="js/audio-engine.js"></script>
+  <script src="js/filter-bank.js"></script>
+  <script src="js/safety-chain.js"></script>
+  <script src="js/spectrogram.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
