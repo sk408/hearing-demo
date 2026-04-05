@@ -266,7 +266,7 @@
     // Stop mic if active
     if (audioEngine.isMicActive) {
       audioEngine.stopMic();
-      els.btnMic.textContent = 'Use Microphone';
+      els.btnMic.textContent = '\u{1F3A4} Use Microphone';
       els.btnMic.classList.remove('active');
       els.btnLoad.disabled = false;
     }
@@ -296,7 +296,7 @@
     if (audioEngine.isMicActive) {
       // Stop mic
       audioEngine.stopMic();
-      els.btnMic.textContent = 'Use Microphone';
+      els.btnMic.textContent = '\u{1F3A4} Use Microphone';
       els.btnMic.classList.remove('active');
       if (els.fileName) els.fileName.textContent = audioEngine.audioBuffer ? 'File loaded' : 'Built-in demo sample';
       els.btnPlay.disabled = !audioEngine.audioBuffer;
@@ -310,7 +310,7 @@
 
       await audioEngine.startMic(filterBank.input);
 
-      els.btnMic.textContent = 'Stop Mic';
+      els.btnMic.textContent = '\u{1F534} Stop Mic';
       els.btnMic.classList.add('active');
       if (els.fileName) els.fileName.textContent = 'Listening...';
       els.btnPlay.disabled = true;

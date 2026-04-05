@@ -10,7 +10,7 @@ class Spectrogram {
 
     this.frequencyMin = 50;
     this.frequencyMax = 8500;
-    this.scrollSpeed = 2;
+    this.scrollSpeed = 10;
     this.sampleRate = 44100;
     this.width = 0;
     this.height = 0;

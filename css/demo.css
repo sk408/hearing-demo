@@ -143,10 +143,38 @@ body {
   cursor: not-allowed;
 }
 
-.btn-mic.active {
+.btn-mic-hero {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border: 2px solid #10b981;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-mic-hero:hover {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: #34d399;
+  color: #34d399;
+}
+
+.btn-mic-hero.active {
   background: var(--danger);
   color: #fff;
   border-color: var(--danger);
+  animation: mic-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
 }
 
 .file-name {
@@ -614,6 +642,7 @@ body {
 @media (max-width: 768px) {
   .header { padding: 8px 14px; }
   .header-hint { display: none; }
+  .btn-mic-hero { padding: 8px 16px; font-size: 14px; }
   .setup-panel { padding: 10px 14px; gap: 8px; }
   .setup-row { gap: 8px; }
 
