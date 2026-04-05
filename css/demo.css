@@ -1,4 +1,4 @@
-/* Hearing Demo — Styles */
+/* Hearing Demo — Clean Clinical UI */
 
 * {
   box-sizing: border-box;
@@ -8,8 +8,8 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #0a0a0a;
-  color: #fff;
+  background: #f5f5f5;
+  color: #333;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -21,14 +21,16 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  background: #1a1a2e;
-  border-bottom: 1px solid #2a2a3e;
+  background: #2c3e50;
+  border-bottom: 2px solid #34495e;
   flex-wrap: wrap;
   gap: 12px;
+  z-index: 100;
+  position: relative;
 }
 
 .toolbar h1 {
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   font-weight: 600;
   color: #fff;
 }
@@ -44,35 +46,37 @@ body {
 button {
   padding: 8px 16px;
   border: none;
-  border-radius: 6px;
-  background: #3a3a5e;
+  border-radius: 4px;
+  background: #3498db;
   color: #fff;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
   transition: background 0.2s;
 }
 
 button:hover {
-  background: #4a4a6e;
+  background: #2980b9;
 }
 
 button:disabled {
-  opacity: 0.5;
+  background: #95a5a6;
+  opacity: 0.7;
   cursor: not-allowed;
 }
 
 button.active {
-  background: #4ecca3;
-  color: #0a0a0a;
+  background: #27ae60;
+  color: #fff;
 }
 
 /* Select */
 select {
   padding: 8px 12px;
-  border: none;
-  border-radius: 6px;
-  background: #2a2a4e;
-  color: #fff;
+  border: 1px solid #bdc3c7;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
   font-size: 14px;
   cursor: pointer;
 }
@@ -86,14 +90,15 @@ select {
 
 .mode-toggle span {
   font-size: 14px;
-  color: #aaa;
+  color: #ecf0f1;
 }
 
 /* Audiogram Panel */
 .panel {
   padding: 16px 20px;
-  background: #141428;
-  border-bottom: 1px solid #2a2a4e;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .panel.hidden {
@@ -103,7 +108,8 @@ select {
 .panel h3 {
   font-size: 1rem;
   margin-bottom: 12px;
-  color: #ddd;
+  color: #2c3e50;
+  font-weight: 600;
 }
 
 .threshold-grid {
@@ -120,15 +126,16 @@ select {
 
 .freq-control label {
   font-size: 12px;
-  color: #888;
+  color: #7f8c8d;
+  font-weight: 500;
 }
 
 .freq-control input {
   padding: 8px 12px;
-  border: none;
+  border: 1px solid #bdc3c7;
   border-radius: 4px;
-  background: #2a2a4e;
-  color: #fff;
+  background: #fff;
+  color: #333;
   font-size: 14px;
   width: 80px;
 }
@@ -136,9 +143,17 @@ select {
 /* Main Display */
 .display {
   flex: 1;
-  position: relative;
   display: flex;
   flex-direction: column;
+  position: relative;
+  background: #000;
+  min-height: 300px;
+}
+
+.canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
 }
 
 #spectrogram,
@@ -147,7 +162,7 @@ select {
   top: 0;
   left: 0;
   width: 100%;
-  height: calc(100% - 40px);
+  height: 100%;
 }
 
 #spectrogram {
@@ -161,54 +176,54 @@ select {
 
 /* Level Meter */
 .level-meter {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 40px;
+  height: 36px;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 0 20px;
-  background: #1a1a2e;
-  border-top: 1px solid #2a2a4e;
+  background: #2c3e50;
+  border-top: 2px solid #34495e;
+  z-index: 10;
 }
 
 .level-meter span:first-child {
   font-size: 13px;
-  color: #888;
+  color: #ecf0f1;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .meter-bar {
   flex: 1;
-  height: 8px;
-  background: #2a2a4e;
-  border-radius: 4px;
+  height: 10px;
+  background: #34495e;
+  border-radius: 5px;
   overflow: hidden;
+  max-width: 300px;
 }
 
 .fill {
   height: 100%;
   width: 0%;
-  background: #4ecca3;
-  border-radius: 4px;
+  background: #2ecc71;
+  border-radius: 5px;
   transition: width 0.1s, background 0.2s;
 }
 
 .fill.warning {
-  background: #ffd93d;
+  background: #f39c12;
 }
 
 .fill.danger {
-  background: #ff6b6b;
+  background: #e74c3c;
 }
 
 #level-value {
   font-size: 13px;
-  color: #aaa;
+  color: #ecf0f1;
   min-width: 70px;
   text-align: right;
+  font-weight: 500;
 }
 
 #level-warning {
@@ -222,14 +237,16 @@ select {
 /* Band Controls */
 .band-controls {
   padding: 16px 20px;
-  background: #141428;
-  border-top: 1px solid #2a2a4e;
+  background: #fff;
+  border-top: 1px solid #ddd;
+  box-shadow: 0 -2px 4px rgba(0,0,0,0.05);
 }
 
 .band-controls h4 {
   font-size: 14px;
   margin-bottom: 12px;
-  color: #888;
+  color: #2c3e50;
+  font-weight: 600;
 }
 
 .bands {
@@ -244,27 +261,29 @@ select {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 10px;
-  background: #1a1a3e;
+  padding: 12px 10px;
+  background: #ecf0f1;
   border-radius: 6px;
+  border: 1px solid #bdc3c7;
 }
 
 .band label {
   font-size: 11px;
-  color: #888;
+  color: #7f8c8d;
+  font-weight: 500;
 }
 
 .band input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #4ecca3;
+  accent-color: #3498db;
   cursor: pointer;
 }
 
 .band .attenuation {
   font-size: 12px;
-  color: #ff6b6b;
-  font-weight: 500;
+  color: #e74c3c;
+  font-weight: 600;
 }
 
 /* Volume Control */
@@ -276,7 +295,8 @@ select {
 
 .volume-control label {
   font-size: 13px;
-  color: #888;
+  color: #7f8c8d;
+  font-weight: 500;
 }
 
 .volume-control input[type="range"] {
@@ -285,7 +305,7 @@ select {
   height: 6px;
   -webkit-appearance: none;
   appearance: none;
-  background: #2a2a4e;
+  background: #bdc3c7;
   border-radius: 3px;
   outline: none;
 }
@@ -295,7 +315,7 @@ select {
   appearance: none;
   width: 16px;
   height: 16px;
-  background: #4ecca3;
+  background: #3498db;
   border-radius: 50%;
   cursor: pointer;
 }
@@ -303,7 +323,7 @@ select {
 .volume-control input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
-  background: #4ecca3;
+  background: #3498db;
   border-radius: 50%;
   cursor: pointer;
   border: none;
@@ -311,7 +331,7 @@ select {
 
 #volume-value {
   font-size: 13px;
-  color: #aaa;
+  color: #7f8c8d;
   min-width: 40px;
 }
 

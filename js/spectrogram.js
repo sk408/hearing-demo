@@ -36,9 +36,9 @@ class Spectrogram {
   }
   
   resize() {
-    const parent = this.canvas.parentElement;
-    this.width = parent.clientWidth;
-    this.height = parent.clientHeight;
+    const container = this.canvas.parentElement;
+    this.width = container.clientWidth;
+    this.height = container.clientHeight;
     
     // Handle high-DPI displays
     const dpr = window.devicePixelRatio || 1;
