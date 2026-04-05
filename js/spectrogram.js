@@ -1,5 +1,5 @@
-// Spectrogram — Horizontal-scrolling waterfall display
-// X-axis: time (scrolls left), Y-axis: frequency (low at bottom, high at top)
+// Spectrogram — Left-to-right scrolling waterfall (standard speech display)
+// X-axis: time (scrolls right), Y-axis: frequency (low at bottom, high at top)
 
 class Spectrogram {
   constructor(canvasId, overlayId) {
@@ -10,12 +10,14 @@ class Spectrogram {
 
     this.frequencyMin = 50;
     this.frequencyMax = 8500;
-    this.scrollSpeed = 10;
+    this.scrollSpeed = 4; // Slower for smoother scroll
     this.sampleRate = 44100;
     this.width = 0;
     this.height = 0;
     this.dataBuffer = [];
     this.savedThresholds = null;
+    this.showSpeechBanana = true;
+    this.showAudiogramCurve = true;
 
     this.initColorLUT();
     this.resize = this.resize.bind(this);
@@ -24,42 +26,33 @@ class Spectrogram {
   }
 
   initColorLUT() {
-    // Pre-compute 256-entry color table [r, g, b]
-    // Dark -> deep blue -> teal -> green -> yellow -> white
+    // Inferno colormap - perceptually uniform, better than rainbow
     this.colorLUT = new Array(256);
     for (let i = 0; i < 256; i++) {
       const t = i / 255;
+      // Inferno approximated
       let r, g, b;
-      if (t < 0.05) {
-        const s = t / 0.05;
-        r = Math.floor(s * 10);
-        g = Math.floor(s * 5);
-        b = Math.floor(s * 30);
-      } else if (t < 0.25) {
-        const s = (t - 0.05) / 0.2;
-        r = Math.floor(10 + s * 30);
-        g = Math.floor(5 + s * 20);
-        b = Math.floor(30 + s * 120);
+      if (t < 0.2) {
+        r = 0;
+        g = t * 3.5;
+        b = t * 1.5 + 0.1;
       } else if (t < 0.5) {
-        const s = (t - 0.25) / 0.25;
-        r = Math.floor(40 - s * 15);
-        g = Math.floor(25 + s * 145);
-        b = Math.floor(150 + s * 30);
-      } else if (t < 0.75) {
-        const s = (t - 0.5) / 0.25;
-        r = Math.floor(25 + s * 200);
-        g = Math.floor(170 + s * 60);
-        b = Math.floor(180 - s * 130);
+        r = (t - 0.2) * 2.5;
+        g = 0.7 + (t - 0.2) * 0.8;
+        b = 0.4 - (t - 0.2) * 0.8;
+      } else if (t < 0.8) {
+        r = 0.75 + (t - 0.5) * 0.8;
+        g = 0.94 - (t - 0.5) * 0.4;
+        b = 0.16 - (t - 0.5) * 0.3;
       } else {
-        const s = (t - 0.75) / 0.25;
-        r = Math.floor(225 + s * 30);
-        g = Math.floor(230 + s * 25);
-        b = Math.floor(50 + s * 200);
+        r = 1;
+        g = 0.82 + (t - 0.8) * 0.9;
+        b = 0.73 + (t - 0.8) * 1.1;
       }
       this.colorLUT[i] = [
-        Math.min(255, Math.max(0, r)),
-        Math.min(255, Math.max(0, g)),
-        Math.min(255, Math.max(0, b))
+        Math.min(255, Math.max(0, Math.floor(r * 255))),
+        Math.min(255, Math.max(0, Math.floor(g * 255))),
+        Math.min(255, Math.max(0, Math.floor(b * 255)))
       ];
     }
   }
@@ -70,14 +63,15 @@ class Spectrogram {
     this.height = container.clientHeight;
     if (this.width === 0 || this.height === 0) return;
 
-    // Spectrogram canvas: no DPR scaling (pixel-level manipulation)
+    const dpr = window.devicePixelRatio || 1;
+    
+    // Spectrogram canvas
     this.canvas.width = this.width;
     this.canvas.height = this.height;
     this.canvas.style.width = this.width + 'px';
     this.canvas.style.height = this.height + 'px';
 
-    // Overlay canvas: DPR scaled for crisp text
-    const dpr = window.devicePixelRatio || 1;
+    // Overlay canvas - DPR scaled for crisp text
     this.overlay.width = this.width * dpr;
     this.overlay.height = this.height * dpr;
     this.overlay.style.width = this.width + 'px';
@@ -90,12 +84,7 @@ class Spectrogram {
     this.ctx.fillStyle = '#0a0a12';
     this.ctx.fillRect(0, 0, this.width, this.height);
 
-    // Redraw overlay if we have thresholds
-    if (this.savedThresholds) {
-      this.drawAudiogramOverlay(this.savedThresholds);
-    } else {
-      this.drawFrequencyLabels();
-    }
+    this.redrawOverlay();
   }
 
   setSampleRate(rate) {
@@ -117,26 +106,30 @@ class Spectrogram {
     }
 
     this.dataBuffer.push(column);
-    // Cap buffer size
-    while (this.dataBuffer.length > 120) {
+    // Cap buffer to ~3 seconds at 60fps
+    const maxColumns = Math.floor(this.width / this.scrollSpeed) + 10;
+    while (this.dataBuffer.length > maxColumns) {
       this.dataBuffer.shift();
     }
   }
 
   draw() {
     if (this.dataBuffer.length === 0 || this.width === 0) return;
-    const column = this.dataBuffer.shift();
 
-    // Shift existing pixels left
+    // Standard left-to-right scrolling: newest at RIGHT edge
+    // (This matches speech analysis software convention)
+    const column = this.dataBuffer[this.dataBuffer.length - 1];
+
+    // Shift existing pixels LEFT (oldest moves left, newest appears at right)
     if (this.width > this.scrollSpeed) {
       const imgData = this.ctx.getImageData(
-        this.scrollSpeed, 0,
+        0, 0,
         this.width - this.scrollSpeed, this.height
       );
-      this.ctx.putImageData(imgData, 0, 0);
+      this.ctx.putImageData(imgData, this.scrollSpeed, 0);
     }
 
-    // Draw new column at right edge using ImageData for performance
+    // Draw new column at RIGHT edge
     const colImg = this.ctx.createImageData(this.scrollSpeed, this.height);
     for (let y = 0; y < this.height; y++) {
       const rgb = this.colorLUT[column[y]];
@@ -162,9 +155,118 @@ class Spectrogram {
     return this.height * (1 - ratio);
   }
 
+  redrawOverlay() {
+    if (this.savedThresholds && this.showAudiogramCurve) {
+      this.drawAudiogramOverlay(this.savedThresholds);
+    } else {
+      this.drawFrequencyLabels();
+    }
+  }
+
+  toggleSpeechBanana(show) {
+    this.showSpeechBanana = show;
+    this.redrawOverlay();
+  }
+
+  drawSpeechBanana() {
+    if (!this.showSpeechBanana) return;
+
+    // Speech banana - the region where speech sounds occur
+    // Based on typical speech formants and consonant energy
+    const speechSounds = [
+      // Vowels (low-mid freq, high intensity)
+      { name: 'U', f1: 250, f2: 600, db: 70 },
+      { name: 'O', f1: 400, f2: 700, db: 68 },
+      { name: 'A', f1: 700, f2: 1200, db: 72 },
+      { name: 'E', f1: 500, f2: 1800, db: 68 },
+      { name: 'I', f1: 300, f2: 2400, db: 65 },
+      // Consonants (mid-high freq)
+      { name: 'M', f: 250, db: 65 },
+      { name: 'N', f: 500, db: 62 },
+      { name: 'NG', f: 300, db: 60 },
+      { name: 'S', f: 4500, db: 55, wide: true },
+      { name: 'SH', f: 2500, db: 58 },
+      { name: 'F', f: 3500, db: 52 },
+      { name: 'TH', f: 2500, db: 55 },
+      { name: 'K', f: 2000, db: 58 },
+      { name: 'T', f: 3500, db: 55 },
+      { name: 'P', f: 1500, db: 60 },
+      { name: 'B', f: 900, db: 62 },
+      { name: 'D', f: 2200, db: 58 },
+      { name: 'G', f: 1900, db: 58 },
+      { name: 'V', f: 1200, db: 55 },
+      { name: 'Z', f: 4000, db: 52 },
+    ];
+
+    // Draw shaded banana region
+    const bananaPath = new Path2D();
+    let first = true;
+    
+    // Sort by frequency for smooth curve
+    const sorted = speechSounds
+      .filter(s => s.f || s.f2)
+      .map(s => ({ 
+        f: s.f || (s.f1 + s.f2) / 2, 
+        y: this.frequencyToY(s.f || (s.f1 + s.f2) / 2),
+        db: s.db 
+      }))
+      .sort((a, b) => a.f - b.f);
+
+    // Draw the banana shape
+    this.octx.save();
+    this.octx.globalAlpha = 0.15;
+    this.octx.fillStyle = '#22c55e';
+    
+    bananaPath.moveTo(60, sorted[0].y);
+    sorted.forEach((pt, i) => {
+      const x = 60 + (i / (sorted.length - 1)) * 100;
+      bananaPath.lineTo(x, pt.y);
+    });
+    // Bottom curve (lower intensity cutoff)
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const pt = sorted[i];
+      const x = 60 + (i / (sorted.length - 1)) * 100;
+      const spread = 15 + (pt.db / 80) * 20; // Spread based on intensity
+      bananaPath.lineTo(x, pt.y + spread);
+    }
+    bananaPath.closePath();
+    this.octx.fill(bananaPath);
+    this.octx.restore();
+
+    // Draw key phoneme labels
+    this.octx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
+    this.octx.textAlign = 'center';
+    this.octx.textBaseline = 'middle';
+    
+    const keyLabels = ['M', 'A', 'E', 'SH', 'S'];
+    speechSounds.filter(s => keyLabels.includes(s.name)).forEach(s => {
+      const f = s.f || (s.f1 + s.f2) / 2;
+      const y = this.frequencyToY(f);
+      const x = 70;
+      
+      this.octx.fillStyle = 'rgba(34, 197, 94, 0.9)';
+      this.octx.beginPath();
+      this.octx.arc(x, y, 12, 0, Math.PI * 2);
+      this.octx.fill();
+      
+      this.octx.fillStyle = '#0a0a12';
+      this.octx.fillText(s.name, x, y + 0.5);
+    });
+
+    // Legend
+    this.octx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+    this.octx.fillStyle = 'rgba(34, 197, 94, 0.7)';
+    this.octx.textAlign = 'left';
+    this.octx.fillText('SPEECH BANANA', 50, this.height - 20);
+    this.octx.fillRect(50, this.height - 15, 90, 2);
+  }
+
   drawFrequencyLabels() {
     const freqs = [125, 250, 500, 1000, 2000, 4000, 8000];
     this.octx.clearRect(0, 0, this.width, this.height);
+
+    // Draw speech banana first (behind grid)
+    this.drawSpeechBanana();
 
     freqs.forEach(freq => {
       const y = this.frequencyToY(freq);
@@ -191,6 +293,9 @@ class Spectrogram {
     this.savedThresholds = thresholds;
     const freqs = [125, 250, 500, 1000, 2000, 4000, 8000];
     this.octx.clearRect(0, 0, this.width, this.height);
+
+    // Draw speech banana
+    this.drawSpeechBanana();
 
     // Frequency grid and labels
     freqs.forEach(freq => {
@@ -236,18 +341,27 @@ class Spectrogram {
     // Draw threshold curve connecting the points
     const points = freqs.map(freq => ({
       x: 10,
-      y: this.frequencyToY(freq)
-    }));
+      y: this.frequencyToY(freq),
+      thr: thresholds[freq] || 0
+    })).filter(pt => pt.thr > 0);
 
-    // Subtle connecting line on left
-    this.octx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
-    this.octx.lineWidth = 1;
-    this.octx.beginPath();
-    points.forEach((pt, i) => {
-      if (thresholds[freqs[i]] <= 0) return;
-      if (i === 0) this.octx.moveTo(1.5, pt.y);
-      else this.octx.lineTo(1.5, pt.y);
-    });
-    this.octx.stroke();
+    if (points.length > 1) {
+      this.octx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+      this.octx.lineWidth = 2;
+      this.octx.beginPath();
+      points.forEach((pt, i) => {
+        if (i === 0) this.octx.moveTo(1.5, pt.y);
+        else this.octx.lineTo(1.5, pt.y);
+      });
+      this.octx.stroke();
+
+      // Draw circles at threshold points
+      points.forEach(pt => {
+        this.octx.fillStyle = 'rgba(239, 68, 68, 0.8)';
+        this.octx.beginPath();
+        this.octx.arc(1.5, pt.y, 3, 0, Math.PI * 2);
+        this.octx.fill();
+      });
+    }
   }
 }

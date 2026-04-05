@@ -23,17 +23,20 @@
   async function init() {
     cacheDOMElements();
 
-    // Create spectrogram immediately (visual only, no audio context needed)
+    // Create spectrogram immediately
     spectrogram = new Spectrogram('spectrogram', 'overlay');
 
-    // Initialize audio eagerly so demo sample is ready
+    // Initialize audio
     await initAudio();
 
-    // Populate mic list (labels may be empty until permission granted)
+    // Populate mic list
     refreshMicList();
 
     setupEventListeners();
     startAnimationLoop();
+
+    // Select mild preset by default
+    selectPreset('mild');
   }
 
   function cacheDOMElements() {
@@ -56,7 +59,8 @@
       presetDesc: document.getElementById('preset-description'),
       safetyThreshold: document.getElementById('safety-threshold'),
       thresholdValue: document.getElementById('threshold-value'),
-      micSelect: document.getElementById('mic-select')
+      micSelect: document.getElementById('mic-select'),
+      speechBananaToggle: document.getElementById('speech-banana-toggle')
     };
 
     [125, 250, 500, 1000, 2000, 4000, 8000].forEach(f => {
@@ -75,7 +79,7 @@
     filterBank = new FilterBank(audioEngine.ctx);
     safetyChain = new SafetyChain(audioEngine.ctx);
 
-    // Audio chain: source -> filterBank -> safetyChain -> analyser -> masterGain -> destination
+    // Audio chain
     filterBank.connect(safetyChain.input);
     safetyChain.connect(audioEngine.analyser);
     audioEngine.analyser.connect(audioEngine.masterGain);
@@ -87,7 +91,7 @@
     const vol = parseInt(els.masterVolume.value) / 100;
     audioEngine.setVolume(vol);
 
-    // Generate built-in demo sample so it works without loading a file
+    // Generate demo sample
     audioEngine.generateDemoSample();
     els.btnPlay.disabled = false;
 
@@ -118,17 +122,43 @@
     // Microphone
     els.btnMic.addEventListener('click', handleMicToggle);
     els.micSelect.addEventListener('change', handleMicDeviceChange);
-
-    // Listen for device changes (e.g. bluetooth headset connect/disconnect)
     navigator.mediaDevices.addEventListener('devicechange', refreshMicList);
 
     // Playback
     els.btnPlay.addEventListener('click', handlePlay);
     els.btnStop.addEventListener('click', handleStop);
 
-    // Mode toggle
-    els.btnFull.addEventListener('click', () => setMode(false));
-    els.btnFiltered.addEventListener('click', () => setMode(true));
+    // Mode toggle with momentary hold option
+    els.btnFull.addEventListener('mousedown', () => setMode(false));
+    els.btnFull.addEventListener('mouseup', () => { if (isFiltered) setMode(true); });
+    els.btnFull.addEventListener('mouseleave', () => { if (isFiltered) setMode(true); });
+    
+    els.btnFiltered.addEventListener('mousedown', () => setMode(true));
+    els.btnFiltered.addEventListener('mouseup', () => { if (!isFiltered) setMode(false); });
+    els.btnFiltered.addEventListener('mouseleave', () => { if (!isFiltered) setMode(false); });
+    
+    // Touch support for mobile
+    els.btnFull.addEventListener('touchstart', (e) => { e.preventDefault(); setMode(false); });
+    els.btnFull.addEventListener('touchend', (e) => { e.preventDefault(); if (isFiltered) setMode(true); });
+    
+    els.btnFiltered.addEventListener('touchstart', (e) => { e.preventDefault(); setMode(true); });
+    els.btnFiltered.addEventListener('touchend', (e) => { e.preventDefault(); if (!isFiltered) setMode(false); });
+
+    // Click to toggle mode (if not holding)
+    let clickTimeout;
+    els.btnFull.addEventListener('click', (e) => {
+      clearTimeout(clickTimeout);
+      clickTimeout = setTimeout(() => {
+        if (!e.defaultPrevented) setMode(false);
+      }, 200);
+    });
+    
+    els.btnFiltered.addEventListener('click', (e) => {
+      clearTimeout(clickTimeout);
+      clickTimeout = setTimeout(() => {
+        if (!e.defaultPrevented) setMode(true);
+      }, 200);
+    });
 
     // Band toggles
     Object.keys(bandChecks).forEach(freq => {
@@ -147,8 +177,16 @@
       els.safetyThreshold.addEventListener('input', handleThresholdChange);
     }
 
+    // Speech banana toggle
+    if (els.speechBananaToggle) {
+      els.speechBananaToggle.addEventListener('change', (e) => {
+        spectrogram.toggleSpeechBanana(e.target.checked);
+      });
+    }
+
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeydown);
+    document.addEventListener('keyup', handleKeyup);
   }
 
   function setupDragDrop() {
@@ -206,7 +244,9 @@
     if (!preset) return;
 
     if (els.audiogramPanel) els.audiogramPanel.classList.remove('hidden');
-    if (els.presetDesc) els.presetDesc.textContent = preset.description;
+    if (els.presetDesc) {
+      els.presetDesc.innerHTML = `<strong>${preset.name}</strong>: ${preset.description}`;
+    }
 
     currentAudiogram = { ...preset.thresholds };
     updateInputsFromAudiogram(currentAudiogram);
@@ -253,7 +293,7 @@
   function setMode(filtered) {
     if (filtered && !currentAudiogram) {
       if (els.presetDesc) {
-        els.presetDesc.textContent = 'Select a hearing profile first to hear the difference';
+        els.presetDesc.textContent = 'Select a hearing profile first';
         els.presetDesc.classList.add('hint');
         setTimeout(() => els.presetDesc.classList.remove('hint'), 2000);
       }
@@ -280,7 +320,6 @@
       els.btnLoad.disabled = false;
     }
 
-    // Resume context if suspended by browser autoplay policy
     if (audioEngine.ctx.state === 'suspended') {
       await audioEngine.ctx.resume();
     }
@@ -289,7 +328,6 @@
     els.btnPlay.disabled = true;
     els.btnStop.disabled = false;
 
-    // Hide drop zone when playing
     if (els.dropZone) els.dropZone.classList.add('hidden');
   }
 
@@ -299,7 +337,7 @@
     els.btnStop.disabled = true;
   }
 
-  // --- Mic Device Selection ---
+  // --- Mic ---
 
   async function refreshMicList() {
     if (!audioEngine) return;
@@ -307,7 +345,6 @@
     const select = els.micSelect;
     const currentValue = select.value;
 
-    // Clear existing options
     select.innerHTML = '';
 
     if (mics.length === 0) {
@@ -319,12 +356,10 @@
     mics.forEach((mic, i) => {
       const opt = document.createElement('option');
       opt.value = mic.deviceId;
-      // Labels are empty until permission is granted; show fallback
       opt.textContent = mic.label || ('Microphone ' + (i + 1));
       select.appendChild(opt);
     });
 
-    // Restore selection if still available, otherwise pick first
     if (currentValue && mics.some(m => m.deviceId === currentValue)) {
       select.value = currentValue;
     } else {
@@ -335,20 +370,15 @@
   }
 
   async function handleMicDeviceChange() {
-    // Only switch if mic is currently active
     if (!audioEngine || !audioEngine.isMicActive) return;
-
     const deviceId = els.micSelect.value;
     if (!deviceId) return;
 
     try {
-      // Stop current mic stream
       audioEngine.stopMic();
-      // Start with newly selected device
       await audioEngine.startMic(filterBank.input, deviceId);
     } catch (err) {
       console.error('Failed to switch microphone:', err);
-      if (els.fileName) els.fileName.textContent = 'Mic switch failed';
     }
   }
 
@@ -356,7 +386,6 @@
     await initAudio();
 
     if (audioEngine.isMicActive) {
-      // Stop mic
       audioEngine.stopMic();
       els.btnMic.textContent = '\u{1F3A4} Use Microphone';
       els.btnMic.classList.remove('active');
@@ -367,17 +396,14 @@
     }
 
     try {
-      // Stop file playback if active
       handleStop();
 
       const selectedDeviceId = els.micSelect.value || undefined;
       await audioEngine.startMic(filterBank.input, selectedDeviceId);
 
-      // After permission granted, refresh the list to get real labels
       if (!micPermissionGranted) {
         micPermissionGranted = true;
         await refreshMicList();
-        // Set dropdown to the active device
         if (audioEngine.currentMicDeviceId) {
           els.micSelect.value = audioEngine.currentMicDeviceId;
         }
@@ -414,7 +440,6 @@
 
   function startAnimationLoop() {
     function tick() {
-      // Feed spectrogram (file playback or mic input)
       const isActive = audioEngine && (audioEngine.isPlaying || audioEngine.isMicActive);
       if (isActive) {
         const freqData = audioEngine.getAnalyserData();
@@ -423,7 +448,6 @@
 
       spectrogram.draw();
 
-      // Update level meter
       if (safetyChain && isActive) {
         const level = safetyChain.getLevel();
         const percent = Math.min(100, Math.max(0, (level.dbfs + 100)));
@@ -441,17 +465,32 @@
 
   // --- Keyboard Shortcuts ---
 
+  let spaceHeld = false;
+  
   function handleKeydown(e) {
-    // Don't trigger when typing in inputs
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
     if (e.code === 'Space') {
       e.preventDefault();
-      if (audioEngine && audioEngine.isPlaying) handleStop();
-      else handlePlay();
+      if (!spaceHeld) {
+        spaceHeld = true;
+        // Hold space = momentary normal hearing
+        if (isFiltered) filterBank.momentaryBypass(true);
+      }
     } else if (e.code === 'KeyF') {
       e.preventDefault();
       setMode(!isFiltered);
+    } else if (e.code === 'KeyM') {
+      e.preventDefault();
+      handleMicToggle();
+    }
+  }
+
+  function handleKeyup(e) {
+    if (e.code === 'Space' && spaceHeld) {
+      spaceHeld = false;
+      // Release space = back to filtered
+      if (isFiltered) filterBank.momentaryBypass(false);
     }
   }
 

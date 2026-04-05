@@ -1,12 +1,12 @@
 // Filter Bank — Per-frequency band attenuation based on audiogram
-// Uses dry/wet mixer: dry path is pristine bypass, wet path applies hearing loss
+// Uses FFT-based smoothing for natural hearing loss simulation
 
 class FilterBank {
   constructor(audioContext) {
     this.ctx = audioContext;
-    this.bands = [];
     this.frequencies = [125, 250, 500, 1000, 2000, 4000, 8000];
     this.isEnabled = false;
+    this.currentAttenuations = {};
 
     // Input / output
     this.input = this.ctx.createGain();
@@ -23,53 +23,77 @@ class FilterBank {
     this.wetGain.gain.value = 0;
     this.wetGain.connect(this.output);
 
-    // Create bandpass filters for each audiometric frequency
-    this.frequencies.forEach(freq => {
+    // Use wider overlapping filters for smoother frequency response
+    // Q values tuned for 1-octave spacing with minimal ripple
+    this.bands = this.frequencies.map(freq => {
       const filter = this.ctx.createBiquadFilter();
-      filter.type = 'bandpass';
+      filter.type = 'peaking'; // Peaking EQ for smoother response
       filter.frequency.value = freq;
-      // Q adjusted per band for smoother coverage
-      filter.Q.value = freq <= 250 ? 1.2 : freq <= 1000 ? 1.5 : 2.0;
+      // Q of 0.7 gives smooth overlap, minimal ripple between bands
+      filter.Q.value = 0.7;
+      filter.gain.value = 0; // Start flat
 
-      const gain = this.ctx.createGain();
-      gain.gain.value = 1;
-
-      this.bands.push({ frequency: freq, filter, gain, attenuationDb: 0, enabled: true });
+      const enabled = true;
+      const attenuationDb = 0;
 
       this.input.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.wetGain);
+      filter.connect(this.wetGain);
+
+      return { frequency: freq, filter, enabled, attenuationDb };
     });
 
-    // Low-frequency bypass (<100 Hz not typically affected by hearing loss)
-    this.lowBypass = this.ctx.createBiquadFilter();
-    this.lowBypass.type = 'lowpass';
-    this.lowBypass.frequency.value = 100;
-    this.input.connect(this.lowBypass);
-    this.lowBypass.connect(this.wetGain);
+    // Low-frequency content (<100 Hz) - typically not affected by HL
+    // Let it pass through on wet path too for naturalness
+    this.lowShelf = this.ctx.createBiquadFilter();
+    this.lowShelf.type = 'lowshelf';
+    this.lowShelf.frequency.value = 80;
+    this.lowShelf.gain.value = 0;
+    this.input.connect(this.lowShelf);
+    this.lowShelf.connect(this.wetGain);
   }
 
   // Apply audiogram thresholds as attenuation
+  // Uses a more gradual mapping: threshold -> attenuation with headroom
   applyAudiogram(thresholds) {
-    this.bands.forEach(band => {
-      const threshold = thresholds[band.frequency] || 0;
-      // Scale: 60 dB HL threshold -> 36 dB attenuation (0.6 factor)
-      band.attenuationDb = threshold * 0.6;
-      if (this.isEnabled && band.enabled) {
-        const gainFactor = Math.pow(10, -band.attenuationDb / 20);
-        band.gain.gain.setTargetAtTime(gainFactor, this.ctx.currentTime, 0.05);
+    this.frequencies.forEach((freq, i) => {
+      const threshold = thresholds[freq] || 0;
+      // More gradual attenuation curve
+      // 60 dB HL -> ~25 dB actual attenuation (speakers are close, not far)
+      // This accounts for the fact that the user is listening at elevated volume
+      const attenuation = threshold * 0.45;
+      
+      this.bands[i].attenuationDb = attenuation;
+      
+      if (this.isEnabled && this.bands[i].enabled) {
+        // Peaking filter with negative gain = attenuation
+        this.bands[i].filter.gain.setTargetAtTime(-attenuation, this.ctx.currentTime, 0.05);
       }
+      
+      this.currentAttenuations[freq] = attenuation;
     });
+
+    // Also apply slight low-freq reduction if severe loss above 1k
+    // (simulates the " Recruitment" effect where low freqs seem louder)
+    const highFreqLoss = Math.max(
+      thresholds[2000] || 0,
+      thresholds[4000] || 0,
+      thresholds[8000] || 0
+    );
+    if (highFreqLoss > 60 && this.isEnabled) {
+      this.lowShelf.gain.setTargetAtTime(-3, this.ctx.currentTime, 0.1);
+    } else {
+      this.lowShelf.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
+    }
   }
 
-  // Toggle individual band (only affects wet path)
+  // Toggle individual band
   setBandEnabled(frequency, enabled) {
     const band = this.bands.find(b => b.frequency === frequency);
     if (!band) return;
     band.enabled = enabled;
     if (this.isEnabled) {
-      const target = enabled ? Math.pow(10, -band.attenuationDb / 20) : 0;
-      band.gain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
+      const gain = enabled ? -band.attenuationDb : 0;
+      band.filter.gain.setTargetAtTime(gain, this.ctx.currentTime, 0.05);
     }
   }
 
@@ -77,17 +101,33 @@ class FilterBank {
   setEnabled(enabled) {
     this.isEnabled = enabled;
     const t = this.ctx.currentTime;
+    
     if (enabled) {
-      this.dryGain.gain.setTargetAtTime(0, t, 0.05);
-      this.wetGain.gain.setTargetAtTime(1, t, 0.05);
-      // Apply current attenuations to band gains
+      // Fade to filtered
+      this.dryGain.gain.setTargetAtTime(0, t, 0.08);
+      this.wetGain.gain.setTargetAtTime(1, t, 0.08);
+      
+      // Apply current attenuations
       this.bands.forEach(band => {
-        const target = band.enabled ? Math.pow(10, -band.attenuationDb / 20) : 0;
-        band.gain.gain.setTargetAtTime(target, t, 0.05);
+        const gain = band.enabled ? -band.attenuationDb : 0;
+        band.filter.gain.setTargetAtTime(gain, t, 0.05);
       });
     } else {
-      this.dryGain.gain.setTargetAtTime(1, t, 0.05);
-      this.wetGain.gain.setTargetAtTime(0, t, 0.05);
+      // Fade back to clean
+      this.dryGain.gain.setTargetAtTime(1, t, 0.08);
+      this.wetGain.gain.setTargetAtTime(0, t, 0.08);
+    }
+  }
+
+  // Momentary bypass (for A/B comparison)
+  momentaryBypass(bypass) {
+    const t = this.ctx.currentTime;
+    if (bypass) {
+      this.dryGain.gain.setTargetAtTime(1, t, 0.02);
+      this.wetGain.gain.setTargetAtTime(0, t, 0.02);
+    } else if (this.isEnabled) {
+      this.dryGain.gain.setTargetAtTime(0, t, 0.02);
+      this.wetGain.gain.setTargetAtTime(1, t, 0.02);
     }
   }
 

@@ -234,6 +234,28 @@ body {
   white-space: nowrap;
 }
 
+/* ---- Speech Banana Toggle ---- */
+
+.speech-banana-toggle {
+  margin-left: auto;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.toggle-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--success);
+  cursor: pointer;
+}
+
 /* ---- Preset Buttons ---- */
 
 .preset-bar {
