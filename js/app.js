@@ -260,8 +260,8 @@
   // --- Playback ---
 
   async function handlePlay() {
-    await initAudio();
-    if (!audioEngine.audioBuffer) return;
+    try { await initAudio(); } catch (err) { console.error('Audio init failed:', err); return; }
+    if (!audioEngine || !audioEngine.audioBuffer) return;
 
     // Stop mic if active
     if (audioEngine.isMicActive) {

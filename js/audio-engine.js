@@ -99,9 +99,9 @@ class AudioEngine {
   }
 
   // Play audio, connecting source to the provided destination node
-  play(destination) {
+  async play(destination) {
     if (!this.ctx || !this.audioBuffer) return false;
-    if (this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.ctx.state === 'suspended') await this.ctx.resume();
 
     this.stop();
 
