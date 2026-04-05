@@ -16,7 +16,9 @@ Visual demonstration tool for hearing loss. Shows clients exactly what frequency
 - Learn why "I hear fine" and "I miss words" coexist
 
 ## Live Demo
-*Coming soon — GitHub Pages deployment*
+**[Try it now →](https://sk408.github.io/hearing-demo/)**
+
+No install needed — works in any modern browser. Use headphones for best results.
 
 ## Quick Start
 

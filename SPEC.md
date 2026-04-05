@@ -117,13 +117,21 @@ interface DemoState {
 
 ## Milestones
 
-### MVP (Week 1)
-- [ ] Audio file loading (WAV/MP3)
-- [ ] Basic spectrogram display
-- [ ] Master volume control
-- [ ] Manual audiogram entry
-- [ ] Filter bank application
-- [ ] Toggle: Full vs Filtered
+### MVP (Week 1) ✅ Complete
+- [x] Audio file loading (WAV/MP3)
+- [x] Basic spectrogram display
+- [x] Master volume control
+- [x] Manual audiogram entry
+- [x] Filter bank application
+- [x] Toggle: Full vs Filtered
+
+### V2 Improvements (Just Shipped)
+- [x] Speech banana overlay — shows where speech sounds live on spectrogram
+- [x] Smoother filter bank — peaking EQ instead of bandpass, eliminates artifacts
+- [x] Hold-to-compare — spacebar or click-and-hold for momentary A/B
+- [x] Correct scroll direction — left-to-right (matches clinical speech software)
+- [x] Better attenuation curve — more realistic simulation
+- [x] GitHub Pages deployment — live demo ready
 
 ### V1 (Week 2)
 - [ ] Safety chain (limiter + compressor)
