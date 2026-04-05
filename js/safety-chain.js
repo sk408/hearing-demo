@@ -1,5 +1,5 @@
 // Safety Chain — Limiter and compressor to prevent hearing damage
-// Critical for use with hearing-impaired clients
+// Uses dBFS (digital full-scale) — we have no calibrated mic so SPL is unknown
 
 class SafetyChain {
   constructor(audioContext) {
@@ -9,106 +9,95 @@ class SafetyChain {
     this.compressor = null;
     this.limiter = null;
     this.analyser = null;
-    
-    // Safety thresholds
-    this.COMPRESSOR_THRESHOLD = -20; // dB - start compressing here (≈70 dB SPL)
-    this.LIMITER_THRESHOLD = -10;    // dB - hard limit here (≈85 dB SPL)
-    this.COMPRESSOR_RATIO = 10;      // 10:1 compression
-    
+
+    // Safety thresholds (dBFS — digital, not calibrated SPL)
+    this.userThreshold = -20;         // User-controlled comfort level
+    this.LIMITER_CEILING = -10;       // Hard digital ceiling, never exceeded
+
     // Current level tracking
     this.currentLevel = -100;
     this.isWarning = false;
     this.isDanger = false;
-    
+
     this.init();
   }
-  
+
   init() {
     // Input and output nodes
     this.input = this.ctx.createGain();
     this.output = this.ctx.createGain();
-    
-    // Compressor - catches peaks before they hit the limiter
+
+    // Compressor — starts at user threshold, tames peaks before limiter
     this.compressor = this.ctx.createDynamicsCompressor();
-    this.compressor.threshold.value = this.COMPRESSOR_THRESHOLD;
+    this.compressor.threshold.value = this.userThreshold;
     this.compressor.knee.value = 5;
-    this.compressor.ratio.value = this.COMPRESSOR_RATIO;
-    this.compressor.attack.value = 0.003; // 3ms attack
-    this.compressor.release.value = 0.1;  // 100ms release
-    
-    // Limiter - final hard ceiling
-    // In Web Audio, we use another compressor with very high ratio as limiter
+    this.compressor.ratio.value = 10;
+    this.compressor.attack.value = 0.003;
+    this.compressor.release.value = 0.1;
+
+    // Limiter — hard digital ceiling
     this.limiter = this.ctx.createDynamicsCompressor();
-    this.limiter.threshold.value = this.LIMITER_THRESHOLD;
+    this.limiter.threshold.value = this.LIMITER_CEILING;
     this.limiter.knee.value = 0;
-    this.limiter.ratio.value = 20; // Limit essentially
-    this.limiter.attack.value = 0.001; // 1ms attack
+    this.limiter.ratio.value = 20;
+    this.limiter.attack.value = 0.001;
     this.limiter.release.value = 0.05;
-    
+
     // Analyser for level metering
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
     this.analyser.smoothingTimeConstant = 0.9;
-    
+
     // Chain: input -> compressor -> limiter -> analyser -> output
     this.input.connect(this.compressor);
     this.compressor.connect(this.limiter);
     this.limiter.connect(this.analyser);
     this.analyser.connect(this.output);
   }
-  
-  // Get current output level in dB
+
+  // Get current output level in dBFS
   getLevel() {
-    const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-    this.analyser.getByteFrequencyData(dataArray);
-    
-    // Find max value
-    let maxVal = 0;
+    const dataArray = new Float32Array(this.analyser.fftSize);
+    this.analyser.getFloatTimeDomainData(dataArray);
+
+    // Calculate RMS level
+    let sumSquares = 0;
     for (let i = 0; i < dataArray.length; i++) {
-      if (dataArray[i] > maxVal) maxVal = dataArray[i];
+      sumSquares += dataArray[i] * dataArray[i];
     }
-    
-    // Convert to dB (0-255 mapped to -100 to 0 dBFS)
-    const db = maxVal > 0 ? 20 * Math.log10(maxVal / 255) : -100;
-    
-    // Approximate SPL (rough mapping, not calibrated)
-    const spl = db + 100; // Offset so 0 dBFS ≈ 100 dB SPL
-    
-    this.currentLevel = spl;
-    
-    // Update warning states
-    this.isWarning = spl > 75;  // Yellow zone
-    this.isDanger = spl > 85;   // Red zone - should never happen due to limiter
-    
+    const rms = Math.sqrt(sumSquares / dataArray.length);
+    const dbfs = rms > 0 ? 20 * Math.log10(rms) : -100;
+
+    this.currentLevel = dbfs;
+
+    // Warning: within 6 dB of user threshold; Danger: above limiter ceiling
+    this.isWarning = dbfs > (this.userThreshold + 6);
+    this.isDanger = dbfs > this.LIMITER_CEILING;
+
     return {
-      db: db,
-      spl: spl,
+      dbfs: dbfs,
       isWarning: this.isWarning,
       isDanger: this.isDanger
     };
   }
-  
-  // Set maximum output level (additional safety)
-  setMaxOutputLevel(maxSpl) {
-    // maxSpl in dB SPL
-    // Convert to gain: if max is 80 dB, and full scale is 100 dB,
-    // we need to reduce by 20 dB = gain of 0.1
-    const reductionDb = 100 - maxSpl;
-    const gain = Math.pow(10, -reductionDb / 20);
-    this.output.gain.setTargetAtTime(gain, this.ctx.currentTime, 0.1);
+
+  // Update user comfort threshold (dBFS, range: -40 to -10)
+  setUserThreshold(dbfs) {
+    this.userThreshold = Math.max(-40, Math.min(-10, dbfs));
+    this.compressor.threshold.setTargetAtTime(this.userThreshold, this.ctx.currentTime, 0.05);
   }
-  
+
   // Connect to another node
   connect(destination) {
     this.output.connect(destination);
   }
-  
+
   // Disconnect
   disconnect() {
     this.output.disconnect();
   }
-  
-  // Emergency stop - instantly mute
+
+  // Emergency stop — instantly mute
   emergencyStop() {
     this.output.gain.setTargetAtTime(0, this.ctx.currentTime, 0.01);
   }

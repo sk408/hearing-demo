@@ -1,130 +1,106 @@
 // Filter Bank — Per-frequency band attenuation based on audiogram
-// Uses 6 bandpass filters with gains modulated by threshold values
+// Uses dry/wet mixer: dry path is pristine bypass, wet path applies hearing loss
 
 class FilterBank {
   constructor(audioContext) {
     this.ctx = audioContext;
     this.bands = [];
-    this.input = null;
-    this.output = null;
-    this.isEnabled = false;
-    
-    // Band center frequencies
     this.frequencies = [125, 250, 500, 1000, 2000, 4000, 8000];
-    
-    this.init();
-  }
-  
-  init() {
-    // Create input/output nodes
+    this.isEnabled = false;
+
+    // Input / output
     this.input = this.ctx.createGain();
     this.output = this.ctx.createGain();
-    
-    // Create bandpass filters and gains for each frequency
-    this.frequencies.forEach((freq, index) => {
-      // Bandpass filter - Q of 2 gives reasonable bandwidth
+
+    // Dry path (clean bypass)
+    this.dryGain = this.ctx.createGain();
+    this.dryGain.gain.value = 1;
+    this.input.connect(this.dryGain);
+    this.dryGain.connect(this.output);
+
+    // Wet path (filtered through hearing loss simulation)
+    this.wetGain = this.ctx.createGain();
+    this.wetGain.gain.value = 0;
+    this.wetGain.connect(this.output);
+
+    // Create bandpass filters for each audiometric frequency
+    this.frequencies.forEach(freq => {
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'bandpass';
       filter.frequency.value = freq;
-      filter.Q.value = 2;
-      
-      // Gain node for this band (controlled by audiogram)
+      // Q adjusted per band for smoother coverage
+      filter.Q.value = freq <= 250 ? 1.2 : freq <= 1000 ? 1.5 : 2.0;
+
       const gain = this.ctx.createGain();
-      gain.gain.value = 1; // Default: no attenuation
-      
-      // Store reference
-      this.bands.push({
-        frequency: freq,
-        filter: filter,
-        gain: gain,
-        attenuationDb: 0
-      });
-      
-      // Connect: input -> filter -> gain -> output
+      gain.gain.value = 1;
+
+      this.bands.push({ frequency: freq, filter, gain, attenuationDb: 0, enabled: true });
+
       this.input.connect(filter);
       filter.connect(gain);
-      gain.connect(this.output);
+      gain.connect(this.wetGain);
     });
-    
-    // Also create a bypass path (low-pass for <100Hz, not affected by hearing loss)
-    this.bypass = this.ctx.createBiquadFilter();
-    this.bypass.type = 'lowpass';
-    this.bypass.frequency.value = 100;
-    this.input.connect(this.bypass);
-    this.bypass.connect(this.output);
+
+    // Low-frequency bypass (<100 Hz not typically affected by hearing loss)
+    this.lowBypass = this.ctx.createBiquadFilter();
+    this.lowBypass.type = 'lowpass';
+    this.lowBypass.frequency.value = 100;
+    this.input.connect(this.lowBypass);
+    this.lowBypass.connect(this.wetGain);
   }
-  
+
   // Apply audiogram thresholds as attenuation
-  // threshold: dB HL at each frequency
-  // We attenuate by (threshold / 2) to approximate the perceptual effect
-  // (this is a simplification - real hearing loss is more complex)
   applyAudiogram(thresholds) {
-    this.bands.forEach((band, index) => {
-      const freq = band.frequency;
-      const threshold = thresholds[freq] || 0;
-      
-      // Convert dB HL to gain factor
-      // 0 dB HL = no attenuation (gain = 1)
-      // 60 dB HL = significant attenuation (gain ≈ 0.001)
-      // We use a gentler slope for demo purposes
-      const attenuationDb = threshold * 0.6; // Scale factor for demo
-      const gainFactor = Math.pow(10, -attenuationDb / 20);
-      
-      // Smooth transition
-      band.gain.gain.setTargetAtTime(gainFactor, this.ctx.currentTime, 0.05);
-      band.attenuationDb = attenuationDb;
+    this.bands.forEach(band => {
+      const threshold = thresholds[band.frequency] || 0;
+      // Scale: 60 dB HL threshold -> 36 dB attenuation (0.6 factor)
+      band.attenuationDb = threshold * 0.6;
+      if (this.isEnabled && band.enabled) {
+        const gainFactor = Math.pow(10, -band.attenuationDb / 20);
+        band.gain.gain.setTargetAtTime(gainFactor, this.ctx.currentTime, 0.05);
+      }
     });
   }
-  
-  // Enable/disable individual bands
+
+  // Toggle individual band (only affects wet path)
   setBandEnabled(frequency, enabled) {
     const band = this.bands.find(b => b.frequency === frequency);
-    if (band) {
-      const targetGain = enabled ? Math.pow(10, -band.attenuationDb / 20) : 0;
-      band.gain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.05);
+    if (!band) return;
+    band.enabled = enabled;
+    if (this.isEnabled) {
+      const target = enabled ? Math.pow(10, -band.attenuationDb / 20) : 0;
+      band.gain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
     }
   }
-  
-  // Enable/disable the entire filter bank
+
+  // Switch between dry (full signal) and wet (filtered)
   setEnabled(enabled) {
     this.isEnabled = enabled;
+    const t = this.ctx.currentTime;
     if (enabled) {
-      // When enabled, bands use their calculated gains
+      this.dryGain.gain.setTargetAtTime(0, t, 0.05);
+      this.wetGain.gain.setTargetAtTime(1, t, 0.05);
+      // Apply current attenuations to band gains
       this.bands.forEach(band => {
-        const targetGain = Math.pow(10, -band.attenuationDb / 20);
-        band.gain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.05);
+        const target = band.enabled ? Math.pow(10, -band.attenuationDb / 20) : 0;
+        band.gain.gain.setTargetAtTime(target, t, 0.05);
       });
     } else {
-      // When disabled (bypass), all bands at full volume
-      this.bands.forEach(band => {
-        band.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.05);
-      });
+      this.dryGain.gain.setTargetAtTime(1, t, 0.05);
+      this.wetGain.gain.setTargetAtTime(0, t, 0.05);
     }
   }
-  
-  // Get current attenuation values for display
+
   getAttenuations() {
     return this.bands.reduce((acc, band) => {
       acc[band.frequency] = {
-        enabled: band.gain.gain.value > 0.01,
+        enabled: band.enabled,
         attenuationDb: band.attenuationDb
       };
       return acc;
     }, {});
   }
-  
-  // Connect to another node
-  connect(destination) {
-    this.output.connect(destination);
-  }
-  
-  // Disconnect
-  disconnect() {
-    this.output.disconnect();
-  }
-}
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = FilterBank;
+  connect(destination) { this.output.connect(destination); }
+  disconnect() { this.output.disconnect(); }
 }

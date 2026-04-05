@@ -20,6 +20,9 @@
           <option value="mild">Mild Loss</option>
           <option value="moderate">Moderate Loss</option>
           <option value="severe">Severe Loss</option>
+          <option value="profound">Profound Loss</option>
+          <option value="presbycusis">Age-Related</option>
+          <option value="noise_induced">Noise-Induced (4kHz Notch)</option>
           <option value="custom">Custom Entry</option>
         </select>
         
@@ -70,10 +73,17 @@
     </div>
 
     <!-- Main Display -->
-    <main class="display">
+    <main class="display" id="drop-zone">
       <div class="canvas-container">
         <canvas id="spectrogram"></canvas>
         <canvas id="overlay"></canvas>
+        <div id="waiting-msg" class="canvas-message">
+          <span>Press Play to start the demo sample</span>
+          <span class="sub">or drag & drop an audio file here</span>
+        </div>
+        <div id="drop-overlay" class="canvas-message drop hidden">
+          <span>Drop audio file</span>
+        </div>
       </div>
       
       <!-- Level Meter -->
@@ -82,8 +92,11 @@
         <div class="meter-bar">
           <div id="level-fill" class="fill"></div>
         </div>
-        <span id="level-value">-- dB</span>
+        <span id="level-value">-- dBFS</span>
         <span id="level-warning" class="warning hidden">⚠️</span>
+        <span class="safety-label">Safety threshold:</span>
+        <input type="range" id="safety-threshold" min="-40" max="-10" value="-20" step="1">
+        <span id="threshold-value">-20 dBFS</span>
       </div>
     </main>
 
@@ -132,6 +145,7 @@
         <label>Master Volume</label>
         <input type="range" id="master-volume" min="0" max="100" value="50">
         <span id="volume-value">50%</span>
+        <span class="comfort-hint">Set your comfortable listening level first</span>
       </div>
     </footer>
   </div>

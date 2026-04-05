@@ -28,7 +28,12 @@
     volumeValue: document.getElementById('volume-value'),
     levelFill: document.getElementById('level-fill'),
     levelValue: document.getElementById('level-value'),
-    levelWarning: document.getElementById('level-warning')
+    levelWarning: document.getElementById('level-warning'),
+    safetyThreshold: document.getElementById('safety-threshold'),
+    thresholdValue: document.getElementById('threshold-value'),
+    dropZone: document.getElementById('drop-zone'),
+    dropOverlay: document.getElementById('drop-overlay'),
+    waitingMsg: document.getElementById('waiting-msg')
   };
   
   // Frequency threshold inputs
@@ -86,6 +91,10 @@
     // Also connect analyser for spectrogram
     safetyChain.connect(audioEngine.analyser);
     
+    // Generate demo sample so it works immediately
+    audioEngine.generateDemoSample();
+    els.btnPlay.disabled = false;
+
     // Set up event listeners
     setupEventListeners();
     
@@ -128,15 +137,43 @@
     
     // Volume control
     els.masterVolume.addEventListener('input', handleVolumeChange);
+
+    // Safety threshold slider
+    els.safetyThreshold.addEventListener('input', handleThresholdChange);
     
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeydown);
+
+    // Drag and drop
+    els.dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      els.dropOverlay.classList.remove('hidden');
+      els.dropZone.classList.add('drag-over');
+    });
+    els.dropZone.addEventListener('dragleave', (e) => {
+      if (!els.dropZone.contains(e.relatedTarget)) {
+        els.dropOverlay.classList.add('hidden');
+        els.dropZone.classList.remove('drag-over');
+      }
+    });
+    els.dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      els.dropOverlay.classList.add('hidden');
+      els.dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('audio/')) {
+        loadAudioFile(file);
+      }
+    });
   }
   
   async function handleAudioLoad(e) {
     const file = e.target.files[0];
     if (!file) return;
-    
+    loadAudioFile(file);
+  }
+
+  async function loadAudioFile(file) {
     try {
       await audioEngine.loadFile(file);
       els.btnPlay.disabled = false;
@@ -226,9 +263,23 @@
     els.btnPlay.disabled = true;
     els.btnStop.disabled = false;
     
-    // Play
+    // Play and connect source to filter chain
     audioEngine.play();
-    
+    audioEngine.source.connect(filterBank.input);
+
+    // Re-enable play button when source ends naturally
+    audioEngine.source.onended = () => {
+      if (audioEngine.isPlaying) {
+        // Only reset if not already stopped by user
+        audioEngine.isPlaying = false;
+        els.btnPlay.disabled = false;
+        els.btnStop.disabled = true;
+      }
+    };
+
+    // Hide waiting message once audio starts
+    els.waitingMsg.classList.add('hidden');
+
     console.log('Playing');
   }
   
@@ -244,9 +295,17 @@
   function handleVolumeChange(e) {
     const value = parseInt(e.target.value);
     els.volumeValue.textContent = value + '%';
-    
+
     if (audioEngine) {
       audioEngine.setVolume(value / 100);
+    }
+  }
+
+  function handleThresholdChange(e) {
+    const dbfs = parseInt(e.target.value);
+    els.thresholdValue.textContent = dbfs + ' dBFS';
+    if (safetyChain) {
+      safetyChain.setUserThreshold(dbfs);
     }
   }
   
@@ -255,12 +314,12 @@
       if (!safetyChain) return;
       
       const level = safetyChain.getLevel();
-      
-      // Update level meter UI
-      const percent = Math.min(100, Math.max(0, (level.spl / 100) * 100));
+
+      // Update level meter UI (dBFS: -100 to 0)
+      const percent = Math.min(100, Math.max(0, (level.dbfs + 100) / 100 * 100));
       els.levelFill.style.width = percent + '%';
-      els.levelValue.textContent = Math.round(level.spl) + ' dB SPL';
-      
+      els.levelValue.textContent = Math.round(level.dbfs) + ' dBFS';
+
       // Warning states
       els.levelFill.classList.toggle('warning', level.isWarning);
       els.levelFill.classList.toggle('danger', level.isDanger);
