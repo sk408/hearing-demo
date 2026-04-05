@@ -1,217 +1,215 @@
 // App.js — Main controller for Hearing Demo
 // Orchestrates audio engine, filter bank, safety chain, and spectrogram
 
-(function() {
+(function () {
   'use strict';
 
-  // State
   let audioEngine = null;
   let filterBank = null;
   let safetyChain = null;
   let spectrogram = null;
-  
   let currentAudiogram = null;
   let isFiltered = false;
-  let levelCheckInterval = null;
-  
-  // DOM elements
-  const els = {
-    btnLoad: document.getElementById('btn-load'),
-    audioInput: document.getElementById('audio-input'),
-    audiogramSelect: document.getElementById('audiogram-select'),
-    audiogramPanel: document.getElementById('audiogram-panel'),
-    btnPlay: document.getElementById('btn-play'),
-    btnStop: document.getElementById('btn-stop'),
-    btnFull: document.getElementById('btn-full'),
-    btnFiltered: document.getElementById('btn-filtered'),
-    masterVolume: document.getElementById('master-volume'),
-    volumeValue: document.getElementById('volume-value'),
-    levelFill: document.getElementById('level-fill'),
-    levelValue: document.getElementById('level-value'),
-    levelWarning: document.getElementById('level-warning'),
-    safetyThreshold: document.getElementById('safety-threshold'),
-    thresholdValue: document.getElementById('threshold-value'),
-    dropZone: document.getElementById('drop-zone'),
-    dropOverlay: document.getElementById('drop-overlay'),
-    waitingMsg: document.getElementById('waiting-msg')
-  };
-  
-  // Frequency threshold inputs
-  const freqInputs = {
-    125: document.getElementById('thr-125'),
-    250: document.getElementById('thr-250'),
-    500: document.getElementById('thr-500'),
-    1000: document.getElementById('thr-1000'),
-    2000: document.getElementById('thr-2000'),
-    4000: document.getElementById('thr-4000'),
-    8000: document.getElementById('thr-8000')
-  };
-  
-  // Frequency band checkboxes
-  const bandChecks = {
-    125: document.getElementById('band-125'),
-    250: document.getElementById('band-250'),
-    500: document.getElementById('band-500'),
-    1000: document.getElementById('band-1000'),
-    2000: document.getElementById('band-2000'),
-    4000: document.getElementById('band-4000'),
-    8000: document.getElementById('band-8000')
-  };
-  
-  // Attenuation displays
-  const attDisplays = {
-    125: document.getElementById('att-125'),
-    250: document.getElementById('att-250'),
-    500: document.getElementById('att-500'),
-    1000: document.getElementById('att-1000'),
-    2000: document.getElementById('att-2000'),
-    4000: document.getElementById('att-4000'),
-    8000: document.getElementById('att-8000')
-  };
+  let audioInitialized = false;
 
-  // Initialization
+  let els = {};
+  let freqInputs = {};
+  let bandChecks = {};
+  let attDisplays = {};
+
+  // --- Initialization ---
+
   async function init() {
-    // Initialize modules
+    cacheDOMElements();
+
+    // Create spectrogram immediately (visual only, no audio context needed)
+    spectrogram = new Spectrogram('spectrogram', 'overlay');
+
+    // Initialize audio eagerly so demo sample is ready
+    await initAudio();
+
+    setupEventListeners();
+    startAnimationLoop();
+  }
+
+  function cacheDOMElements() {
+    els = {
+      btnLoad: document.getElementById('btn-load'),
+      btnMic: document.getElementById('btn-mic'),
+      audioInput: document.getElementById('audio-input'),
+      btnPlay: document.getElementById('btn-play'),
+      btnStop: document.getElementById('btn-stop'),
+      btnFull: document.getElementById('btn-full'),
+      btnFiltered: document.getElementById('btn-filtered'),
+      audiogramPanel: document.getElementById('audiogram-panel'),
+      masterVolume: document.getElementById('master-volume'),
+      volumeValue: document.getElementById('volume-value'),
+      levelFill: document.getElementById('level-fill'),
+      levelValue: document.getElementById('level-value'),
+      levelWarning: document.getElementById('level-warning'),
+      dropZone: document.getElementById('drop-zone'),
+      fileName: document.getElementById('file-name'),
+      presetDesc: document.getElementById('preset-description'),
+      safetyThreshold: document.getElementById('safety-threshold'),
+      thresholdValue: document.getElementById('threshold-value')
+    };
+
+    [125, 250, 500, 1000, 2000, 4000, 8000].forEach(f => {
+      freqInputs[f] = document.getElementById('thr-' + f);
+      bandChecks[f] = document.getElementById('band-' + f);
+      attDisplays[f] = document.getElementById('att-' + f);
+    });
+  }
+
+  async function initAudio() {
+    if (audioInitialized) return;
+
     audioEngine = new AudioEngine();
     await audioEngine.init();
-    
+
     filterBank = new FilterBank(audioEngine.ctx);
     safetyChain = new SafetyChain(audioEngine.ctx);
-    spectrogram = new Spectrogram('spectrogram', 'overlay');
-    
-    // Set up audio chain: source -> filterBank -> safetyChain -> masterGain -> destination
-    // Note: filterBank and safetyChain connect in their constructors
-    // We need to wire them together
-    
-    // Wire the chain properly
+
+    // Audio chain: source -> filterBank -> safetyChain -> analyser -> masterGain -> destination
     filterBank.connect(safetyChain.input);
-    safetyChain.connect(audioEngine.masterGain);
-    audioEngine.masterGain.connect(audioEngine.ctx.destination);
-    
-    // Also connect analyser for spectrogram
     safetyChain.connect(audioEngine.analyser);
-    
-    // Generate demo sample so it works immediately
+    audioEngine.analyser.connect(audioEngine.masterGain);
+    audioEngine.masterGain.connect(audioEngine.ctx.destination);
+
+    spectrogram.setSampleRate(audioEngine.getSampleRate());
+
+    // Set initial volume
+    const vol = parseInt(els.masterVolume.value) / 100;
+    audioEngine.setVolume(vol);
+
+    // Generate built-in demo sample so it works without loading a file
     audioEngine.generateDemoSample();
     els.btnPlay.disabled = false;
 
-    // Set up event listeners
-    setupEventListeners();
-    
-    // Start level monitoring
-    startLevelMonitoring();
-    
-    // Start spectrogram
-    spectrogram.start();
-    
-    console.log('Hearing Demo initialized');
+    audioInitialized = true;
   }
-  
+
+  // --- Event Listeners ---
+
   function setupEventListeners() {
-    // Load audio button
+    // File loading
     els.btnLoad.addEventListener('click', () => els.audioInput.click());
-    els.audioInput.addEventListener('change', handleAudioLoad);
-    
-    // Audiogram selection
-    els.audiogramSelect.addEventListener('change', handleAudiogramSelect);
-    
-    // Threshold inputs
-    Object.values(freqInputs).forEach(input => {
-      input.addEventListener('change', updateAudiogramFromInputs);
+    els.audioInput.addEventListener('change', (e) => {
+      if (e.target.files[0]) loadAudioFile(e.target.files[0]);
     });
-    
-    // Playback controls
+
+    setupDragDrop();
+
+    // Preset buttons
+    document.querySelectorAll('.btn-preset').forEach(btn => {
+      btn.addEventListener('click', () => selectPreset(btn.dataset.preset));
+    });
+
+    // Custom threshold inputs
+    Object.values(freqInputs).forEach(input => {
+      if (input) input.addEventListener('change', updateAudiogramFromInputs);
+    });
+
+    // Microphone
+    els.btnMic.addEventListener('click', handleMicToggle);
+
+    // Playback
     els.btnPlay.addEventListener('click', handlePlay);
     els.btnStop.addEventListener('click', handleStop);
-    
+
     // Mode toggle
     els.btnFull.addEventListener('click', () => setMode(false));
     els.btnFiltered.addEventListener('click', () => setMode(true));
-    
+
     // Band toggles
     Object.keys(bandChecks).forEach(freq => {
-      bandChecks[freq].addEventListener('change', (e) => {
-        filterBank.setBandEnabled(parseInt(freq), e.target.checked);
-      });
+      if (bandChecks[freq]) {
+        bandChecks[freq].addEventListener('change', (e) => {
+          if (filterBank) filterBank.setBandEnabled(parseInt(freq), e.target.checked);
+        });
+      }
     });
-    
-    // Volume control
+
+    // Volume
     els.masterVolume.addEventListener('input', handleVolumeChange);
 
-    // Safety threshold slider
-    els.safetyThreshold.addEventListener('input', handleThresholdChange);
-    
+    // Safety threshold
+    if (els.safetyThreshold) {
+      els.safetyThreshold.addEventListener('input', handleThresholdChange);
+    }
+
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeydown);
+  }
 
-    // Drag and drop
-    els.dropZone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      els.dropOverlay.classList.remove('hidden');
-      els.dropZone.classList.add('drag-over');
+  function setupDragDrop() {
+    const zone = els.dropZone;
+    if (!zone) return;
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+      document.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); });
     });
-    els.dropZone.addEventListener('dragleave', (e) => {
-      if (!els.dropZone.contains(e.relatedTarget)) {
-        els.dropOverlay.classList.add('hidden');
-        els.dropZone.classList.remove('drag-over');
-      }
+
+    zone.addEventListener('dragenter', () => zone.classList.add('drag-over'));
+    zone.addEventListener('dragover', () => zone.classList.add('drag-over'));
+    zone.addEventListener('dragleave', (e) => {
+      if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
     });
-    els.dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      els.dropOverlay.classList.add('hidden');
-      els.dropZone.classList.remove('drag-over');
+    zone.addEventListener('drop', (e) => {
+      zone.classList.remove('drag-over');
       const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith('audio/')) {
-        loadAudioFile(file);
-      }
+      if (file && file.type.startsWith('audio/')) loadAudioFile(file);
     });
+
+    zone.addEventListener('click', () => els.audioInput.click());
   }
-  
-  async function handleAudioLoad(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    loadAudioFile(file);
-  }
+
+  // --- Audio Loading ---
 
   async function loadAudioFile(file) {
     try {
+      await initAudio();
       await audioEngine.loadFile(file);
       els.btnPlay.disabled = false;
-      console.log('Loaded:', file.name);
+      if (els.fileName) els.fileName.textContent = file.name;
+      if (els.dropZone) els.dropZone.classList.add('hidden');
+      spectrogram.resize();
     } catch (err) {
-      alert('Failed to load audio: ' + err.message);
+      if (els.fileName) els.fileName.textContent = 'Error loading file';
+      console.error('Audio load failed:', err);
     }
   }
-  
-  function handleAudiogramSelect(e) {
-    const preset = e.target.value;
-    
-    if (!preset) {
-      els.audiogramPanel.classList.add('hidden');
+
+  // --- Audiogram ---
+
+  function selectPreset(presetKey) {
+    document.querySelectorAll('.btn-preset').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.preset === presetKey);
+    });
+
+    if (presetKey === 'custom') {
+      if (els.audiogramPanel) els.audiogramPanel.classList.remove('hidden');
+      if (els.presetDesc) els.presetDesc.textContent = 'Enter custom thresholds below';
       return;
     }
-    
-    if (preset === 'custom') {
-      els.audiogramPanel.classList.remove('hidden');
-      return;
-    }
-    
-    // Apply preset
-    els.audiogramPanel.classList.remove('hidden');
-    
-    if (PRESETS[preset]) {
-      currentAudiogram = PRESETS[preset].thresholds;
-      updateInputsFromAudiogram(currentAudiogram);
-      applyAudiogram();
-    }
+
+    const preset = PRESETS[presetKey];
+    if (!preset) return;
+
+    if (els.audiogramPanel) els.audiogramPanel.classList.remove('hidden');
+    if (els.presetDesc) els.presetDesc.textContent = preset.description;
+
+    currentAudiogram = { ...preset.thresholds };
+    updateInputsFromAudiogram(currentAudiogram);
+    applyAudiogram();
   }
-  
+
   function updateInputsFromAudiogram(thresholds) {
     Object.keys(freqInputs).forEach(freq => {
-      freqInputs[freq].value = thresholds[freq] || 0;
+      if (freqInputs[freq]) freqInputs[freq].value = thresholds[freq] || 0;
     });
   }
-  
+
   function updateAudiogramFromInputs() {
     currentAudiogram = {};
     Object.keys(freqInputs).forEach(freq => {
@@ -219,135 +217,170 @@
     });
     applyAudiogram();
   }
-  
+
   function applyAudiogram() {
     if (!currentAudiogram || !filterBank) return;
-    
+
     filterBank.applyAudiogram(currentAudiogram);
-    
-    // Update attenuation displays
+
     const atts = filterBank.getAttenuations();
     Object.keys(attDisplays).forEach(freq => {
+      if (!attDisplays[freq]) return;
       const info = atts[freq];
-      attDisplays[freq].textContent = info.enabled 
-        ? `-${Math.round(info.attenuationDb)} dB` 
-        : 'OFF';
+      if (info.attenuationDb > 0) {
+        attDisplays[freq].textContent = '-' + Math.round(info.attenuationDb) + ' dB';
+        attDisplays[freq].classList.add('has-loss');
+      } else {
+        attDisplays[freq].textContent = '0 dB';
+        attDisplays[freq].classList.remove('has-loss');
+      }
     });
-    
-    // Update spectrogram overlay
+
     spectrogram.drawAudiogramOverlay(currentAudiogram);
   }
-  
+
+  // --- Mode Toggle ---
+
   function setMode(filtered) {
+    if (filtered && !currentAudiogram) {
+      if (els.presetDesc) {
+        els.presetDesc.textContent = 'Select a hearing profile first to hear the difference';
+        els.presetDesc.classList.add('hint');
+        setTimeout(() => els.presetDesc.classList.remove('hint'), 2000);
+      }
+      return;
+    }
+
     isFiltered = filtered;
-    
-    // Update button states
     els.btnFull.classList.toggle('active', !filtered);
     els.btnFiltered.classList.toggle('active', filtered);
-    
-    // Apply to filter bank
-    filterBank.setEnabled(filtered);
-    
-    console.log('Mode:', filtered ? 'filtered' : 'full');
+    if (filterBank) filterBank.setEnabled(filtered);
   }
-  
-  function handlePlay() {
+
+  // --- Playback ---
+
+  async function handlePlay() {
+    await initAudio();
     if (!audioEngine.audioBuffer) return;
-    
-    // Resume context if needed
-    if (audioEngine.ctx.state === 'suspended') {
-      audioEngine.ctx.resume();
+
+    // Stop mic if active
+    if (audioEngine.isMicActive) {
+      audioEngine.stopMic();
+      els.btnMic.textContent = 'Use Microphone';
+      els.btnMic.classList.remove('active');
+      els.btnLoad.disabled = false;
     }
-    
-    // Update button states
+
+    // Resume context if suspended by browser autoplay policy
+    if (audioEngine.ctx.state === 'suspended') {
+      await audioEngine.ctx.resume();
+    }
+
+    audioEngine.play(filterBank.input);
     els.btnPlay.disabled = true;
     els.btnStop.disabled = false;
-    
-    // Play and connect source to filter chain
-    audioEngine.play();
-    audioEngine.source.connect(filterBank.input);
 
-    // Re-enable play button when source ends naturally
-    audioEngine.source.onended = () => {
-      if (audioEngine.isPlaying) {
-        // Only reset if not already stopped by user
-        audioEngine.isPlaying = false;
-        els.btnPlay.disabled = false;
-        els.btnStop.disabled = true;
-      }
-    };
-
-    // Hide waiting message once audio starts
-    els.waitingMsg.classList.add('hidden');
-
-    console.log('Playing');
+    // Hide drop zone when playing
+    if (els.dropZone) els.dropZone.classList.add('hidden');
   }
-  
+
   function handleStop() {
-    audioEngine.stop();
-    
+    if (audioEngine) audioEngine.stop();
     els.btnPlay.disabled = false;
     els.btnStop.disabled = true;
-    
-    console.log('Stopped');
   }
-  
+
+  async function handleMicToggle() {
+    await initAudio();
+
+    if (audioEngine.isMicActive) {
+      // Stop mic
+      audioEngine.stopMic();
+      els.btnMic.textContent = 'Use Microphone';
+      els.btnMic.classList.remove('active');
+      if (els.fileName) els.fileName.textContent = audioEngine.audioBuffer ? 'File loaded' : 'Built-in demo sample';
+      els.btnPlay.disabled = !audioEngine.audioBuffer;
+      els.btnLoad.disabled = false;
+      return;
+    }
+
+    try {
+      // Stop file playback if active
+      handleStop();
+
+      await audioEngine.startMic(filterBank.input);
+
+      els.btnMic.textContent = 'Stop Mic';
+      els.btnMic.classList.add('active');
+      if (els.fileName) els.fileName.textContent = 'Listening...';
+      els.btnPlay.disabled = true;
+      els.btnStop.disabled = true;
+      els.btnLoad.disabled = true;
+      if (els.dropZone) els.dropZone.classList.add('hidden');
+    } catch (err) {
+      console.error('Microphone access denied:', err);
+      if (els.fileName) els.fileName.textContent = 'Mic access denied';
+    }
+  }
+
+  // --- Volume & Safety ---
+
   function handleVolumeChange(e) {
     const value = parseInt(e.target.value);
     els.volumeValue.textContent = value + '%';
-
-    if (audioEngine) {
-      audioEngine.setVolume(value / 100);
-    }
+    if (audioEngine) audioEngine.setVolume(value / 100);
   }
 
   function handleThresholdChange(e) {
     const dbfs = parseInt(e.target.value);
-    els.thresholdValue.textContent = dbfs + ' dBFS';
-    if (safetyChain) {
-      safetyChain.setUserThreshold(dbfs);
-    }
+    if (els.thresholdValue) els.thresholdValue.textContent = dbfs + ' dBFS';
+    if (safetyChain) safetyChain.setUserThreshold(dbfs);
   }
-  
-  function startLevelMonitoring() {
-    levelCheckInterval = setInterval(() => {
-      if (!safetyChain) return;
-      
-      const level = safetyChain.getLevel();
 
-      // Update level meter UI (dBFS: -100 to 0)
-      const percent = Math.min(100, Math.max(0, (level.dbfs + 100) / 100 * 100));
-      els.levelFill.style.width = percent + '%';
-      els.levelValue.textContent = Math.round(level.dbfs) + ' dBFS';
+  // --- Animation Loop ---
 
-      // Warning states
-      els.levelFill.classList.toggle('warning', level.isWarning);
-      els.levelFill.classList.toggle('danger', level.isDanger);
-      els.levelWarning.classList.toggle('hidden', !level.isWarning && !level.isDanger);
-      
-      // Get spectrogram data from analyser
-      const freqData = audioEngine.getAnalyserData();
-      if (freqData) {
-        spectrogram.addData(freqData);
+  function startAnimationLoop() {
+    function tick() {
+      // Feed spectrogram (file playback or mic input)
+      const isActive = audioEngine && (audioEngine.isPlaying || audioEngine.isMicActive);
+      if (isActive) {
+        const freqData = audioEngine.getAnalyserData();
+        if (freqData) spectrogram.addData(freqData);
       }
-      
-    }, 50); // 20fps update
+
+      spectrogram.draw();
+
+      // Update level meter
+      if (safetyChain && isActive) {
+        const level = safetyChain.getLevel();
+        const percent = Math.min(100, Math.max(0, (level.dbfs + 100)));
+        els.levelFill.style.width = percent + '%';
+        els.levelValue.textContent = Math.round(level.dbfs) + ' dBFS';
+        els.levelFill.classList.toggle('warning', level.isWarning);
+        els.levelFill.classList.toggle('danger', level.isDanger);
+        els.levelWarning.classList.toggle('hidden', !level.isWarning && !level.isDanger);
+      }
+
+      requestAnimationFrame(tick);
+    }
+    tick();
   }
-  
+
+  // --- Keyboard Shortcuts ---
+
   function handleKeydown(e) {
+    // Don't trigger when typing in inputs
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
     if (e.code === 'Space') {
       e.preventDefault();
-      if (audioEngine.isPlaying) {
-        handleStop();
-      } else {
-        handlePlay();
-      }
+      if (audioEngine && audioEngine.isPlaying) handleStop();
+      else handlePlay();
     } else if (e.code === 'KeyF') {
+      e.preventDefault();
       setMode(!isFiltered);
     }
   }
-  
-  // Initialize when DOM is ready
+
   document.addEventListener('DOMContentLoaded', init);
-  
 })();
